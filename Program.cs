@@ -9,7 +9,65 @@ namespace ConsoleApplication
     {
         static async Task Main(string[] args)
         {
-            var path = "../../../input/file1.rpgsave"; // todo: file selection prompt instead of this
+            await convertToJson("../../../input/file1.rpgsave");
+            await convertToRpgMV("../../../input/file1.rpgsave.json");
+        }
+
+        static async Task convertToRpgMV( string Path)
+        {
+            var path = Path; // todo: file selection prompt instead of this
+            var rpgsavePath = "../../../input/file1_restored.rpgsave";
+            Console.WriteLine("Path located: " + File.Exists(path)); //returns true
+            if (!File.Exists(path))
+            {
+                Console.WriteLine("Could not find file :(");
+                return;
+            }
+            var utf8 = new UTF8Encoding(false); //object for handling utf8 encoding
+
+            string jsonString;
+            await using (var jsonFile = File.Open(path, new FileStreamOptions
+            {
+                Mode = FileMode.Open,
+                Access = FileAccess.Read,
+                Share = FileShare.Read,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+            }))
+            using (var reader = new StreamReader(jsonFile, utf8))
+            {
+                jsonString = await reader.ReadToEndAsync().ConfigureAwait(false);
+            }
+
+            var jsonDoc = JsonDocument.Parse(jsonString);
+            var minifiedJson = JsonSerializer.Serialize(jsonDoc, new JsonSerializerOptions
+            {
+                Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+                WriteIndented = true
+            });
+
+            var compressed = LZString.CompressToBase64(minifiedJson);
+
+            await using (var rpgsaveFile = File.Open(rpgsavePath, new FileStreamOptions
+            {
+                Mode = FileMode.Create,
+                Access = FileAccess.Write,
+                Share = FileShare.Read,
+                Options = FileOptions.Asynchronous | FileOptions.SequentialScan
+            }))
+
+            using (var writer = new StreamWriter(rpgsaveFile, utf8))
+            {
+                await writer.WriteAsync(compressed).ConfigureAwait(false);
+                await writer.FlushAsync().ConfigureAwait(false);
+                await rpgsaveFile.FlushAsync().ConfigureAwait(false);
+            }
+
+            return;
+        }
+
+        static async Task convertToJson(string Path)
+        {
+            var path = Path; // todo: file selection prompt instead of this
             Console.WriteLine("Path located: " + File.Exists(path)); //returns true
             if (!File.Exists(path))
             {
@@ -30,7 +88,7 @@ namespace ConsoleApplication
 
             var inputAsString = await reader.ReadToEndAsync().ConfigureAwait(false);
 
-            string output, outputPath; 
+            string output, outputPath;
 
             outputPath = path + ".json"; // todo: file save selection prompt instead of this
             output = LZString.DecompressFromBase64(inputAsString);
@@ -49,7 +107,7 @@ namespace ConsoleApplication
                 Options = FileOptions.Asynchronous | FileOptions.SequentialScan
             });
 
-            await using var writer = new StreamWriter(outputOpen, utf8); 
+            await using var writer = new StreamWriter(outputOpen, utf8);
             await writer.WriteAsync(output).ConfigureAwait(false); // todo: reverse operation (.json to .rpgsave)
             //memory cleanup
             await writer.FlushAsync().ConfigureAwait(false);
